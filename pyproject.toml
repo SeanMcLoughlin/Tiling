@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "Quickly construct tilings of regular polygons and their dual tilings using a simple API."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pycairo>=1.28.0",
+]

@@ -1,4 +1,5 @@
 from math import sin, cos, tan, pi, atan2
+from typing import Union
 import cairo
 
 # Model() defaults
@@ -16,14 +17,17 @@ SHOW_LABELS = False
 FILL_COLOR = 0x477984
 STROKE_COLOR = 0x313E4A
 
+
 def color(value):
     r = ((value >> (8 * 2)) & 255) / 255.0
     g = ((value >> (8 * 1)) & 255) / 255.0
     b = ((value >> (8 * 0)) & 255) / 255.0
     return (r, g, b)
 
+
 def normalize(x, y):
     return (round(x, 6), round(y, 6))
+
 
 def inset_corner(p1, p2, p3, margin):
     (x1, y1), (x2, y2), (x3, y3) = (p1, p2, p3)
@@ -42,6 +46,7 @@ def inset_corner(p1, p2, p3, margin):
     y = (ady * c2 - bdy * c1) / d
     return (x, y)
 
+
 def inset_polygon(points, margin):
     result = []
     points = list(points)
@@ -52,8 +57,16 @@ def inset_polygon(points, margin):
     result.append(result[0])
     return result
 
+
 class Shape(object):
-    def __init__(self, sides, x=0, y=0, rotation=0, **kwargs):
+    def __init__(
+        self,
+        sides: int,
+        x: Union[int, float] = 0,
+        y: Union[int, float] = 0,
+        rotation: Union[int, float] = 0,
+        **kwargs,
+    ):
         self.sides = sides
         self.x = x
         self.y = y
@@ -62,11 +75,12 @@ class Shape(object):
         self.stroke = STROKE_COLOR
         for key, value in kwargs.items():
             setattr(self, key, value)
+
     def copy(self, x, y):
         return Shape(
-            self.sides, x, y, self.rotation,
-            fill=self.fill, stroke=self.stroke
+            self.sides, x, y, self.rotation, fill=self.fill, stroke=self.stroke
         )
+
     def points(self, margin=0):
         angle = 2 * pi / self.sides
         rotation = self.rotation - pi / 2
@@ -76,8 +90,9 @@ class Shape(object):
         angles.append(angles[0])
         d = 0.5 / sin(angle / 2) - margin / cos(angle / 2)
         return [(self.x + cos(a) * d, self.y + sin(a) * d) for a in angles]
+
     def adjacent(self, sides, edge, **kwargs):
-        (x1, y1), (x2, y2) = self.points()[edge:edge + 2]
+        (x1, y1), (x2, y2) = self.points()[edge : edge + 2]
         angle = 2 * pi / sides
         a = atan2(y2 - y1, x2 - x1)
         b = a - pi / 2
@@ -86,6 +101,7 @@ class Shape(object):
         y = y1 + (y2 - y1) / 2.0 + sin(b) * d
         a += angle * ((sides - 1) / 2)
         return Shape(sides, x, y, a, **kwargs)
+
     def render(self, dc, margin):
         points = self.points(margin)
         dc.move_to(*points[0])
@@ -95,10 +111,11 @@ class Shape(object):
         dc.fill_preserve()
         dc.set_source_rgb(*color(self.stroke))
         dc.stroke()
+
     def render_edge_labels(self, dc, margin):
         points = self.points(margin)
         for edge in range(self.sides):
-            (x1, y1), (x2, y2) = points[edge:edge + 2]
+            (x1, y1), (x2, y2) = points[edge : edge + 2]
             text = str(edge)
             tw, th = dc.text_extents(text)[2:4]
             x = x1 + (x2 - x1) / 2.0 - tw / 2.0
@@ -106,6 +123,7 @@ class Shape(object):
             dc.set_source_rgb(1, 1, 1)
             dc.move_to(x, y)
             dc.show_text(text)
+
     def render_label(self, dc, text):
         text = str(text)
         tw, th = dc.text_extents(text)[2:4]
@@ -115,15 +133,18 @@ class Shape(object):
         dc.move_to(x, y)
         dc.show_text(text)
 
+
 class DualShape(Shape):
     def __init__(self, points):
         super(DualShape, self).__init__(len(points) - 1)
         self.data = points
+
     def points(self, margin=0):
         if margin == 0:
             return self.data
         else:
             return inset_polygon(self.data, margin)
+
 
 class Model(object):
     def __init__(self, width=WIDTH, height=HEIGHT, scale=SCALE):
@@ -132,14 +153,17 @@ class Model(object):
         self.scale = scale
         self.shapes = []
         self.lookup = {}
+
     def append(self, shape):
         self.shapes.append(shape)
         key = normalize(shape.x, shape.y)
         self.lookup[key] = shape
+
     def _add(self, index, edge, sides, **kwargs):
         parent = self.shapes[index]
         shape = parent.adjacent(sides, edge, **kwargs)
         self.append(shape)
+
     def add(self, indexes, edges, sides, **kwargs):
         if isinstance(indexes, int):
             indexes = [indexes]
@@ -151,12 +175,14 @@ class Model(object):
                 self._add(index, edge, sides, **kwargs)
         end = len(self.shapes)
         return range(start, end)
+
     def add_repeats(self, x, y):
         for shape in self.shapes:
             key = normalize(x + shape.x, y + shape.y)
             if key in self.lookup:
                 continue
             self.lookup[key] = shape.copy(x + shape.x, y + shape.y)
+
     def _repeat(self, indexes, x, y, depth, memo):
         if depth < 0:
             return
@@ -169,8 +195,8 @@ class Model(object):
             self.add_repeats(x, y)
         for index in indexes:
             shape = self.shapes[index]
-            self._repeat(
-                indexes, x + shape.x, y + shape.y, depth - 1, memo)
+            self._repeat(indexes, x + shape.x, y + shape.y, depth - 1, memo)
+
     def repeat(self, indexes):
         memo = {}
         depth = 0
@@ -185,28 +211,36 @@ class Model(object):
             if tl and tr and bl and br:
                 break
             depth += 1
+
     def dual(self):
         vertexes = {}
         for shape in self.lookup.values():
-            for (x, y) in shape.points()[:-1]:
+            for x, y in shape.points()[:-1]:
                 key = normalize(x, y)
                 vertexes.setdefault(key, []).append(shape)
         result = []
         for (x, y), shapes in vertexes.items():
             if len(shapes) < 3:
                 continue
+
             def angle(shape):
                 return atan2(shape.y - y, shape.x - x)
+
             shapes.sort(key=angle, reverse=True)
             points = [(shape.x, shape.y) for shape in shapes]
             points.append(points[0])
             result.append(DualShape(points))
         return result
+
     def render(
-            self, dual=False, background_color=BACKGROUND_COLOR, margin=MARGIN,
-            show_labels=SHOW_LABELS, line_width=LINE_WIDTH):
-        surface = cairo.ImageSurface(
-            cairo.FORMAT_RGB24, self.width, self.height)
+        self,
+        dual=False,
+        background_color=BACKGROUND_COLOR,
+        margin=MARGIN,
+        show_labels=SHOW_LABELS,
+        line_width=LINE_WIDTH,
+    ) -> cairo.ImageSurface:
+        surface = cairo.ImageSurface(cairo.FORMAT_RGB24, self.width, self.height)
         dc = cairo.Context(surface)
         dc.set_line_cap(cairo.LINE_CAP_ROUND)
         dc.set_line_join(cairo.LINE_JOIN_ROUND)
